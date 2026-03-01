@@ -14,6 +14,10 @@ static const uint16_t MQTT_PORT = 8883;
 static const char* MQTT_USER = "Remco2";
 static const char* MQTT_PASS = "Remco121";
 
+// ---- Configure topics ----
+static const char* TOPIC_IMG = "/img/chunk";
+static const char* MQTT_STATUS_TOPIC = "/esp32/status";
+
 extern WiFiClientSecure espClient;  
 extern PubSubClient client;
 

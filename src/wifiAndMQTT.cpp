@@ -1,5 +1,6 @@
 #include <wifiAndMQTT.h>
 #include <display.h>
+#include <decode.h>
 
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
@@ -10,6 +11,7 @@ static const unsigned long WIFI_RETRY_INTERVAL_MS = 30000;
 static const unsigned long MQTT_RETRY_INTERVAL_MS = 5000;
 
 static void mqttTlsSetup() {
+    
   // Recommended security: set CA cert:
   // espClient.setCACert(root_ca_pem);
 
@@ -28,6 +30,9 @@ void wifiInit() {
   }
 
   Serial.println("\nConnected to WiFi!");
+  IPAddress dns1(1,1,1,1);   // Cloudflare
+  IPAddress dns2(8,8,8,8);   // Google
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, dns1, dns2);
   statusScreen(0);            // clear / normal screen
 }
 
@@ -46,30 +51,48 @@ void wifiReconnectCheck() {
 }
 
 void mqttInit() {
+  espClient.stop();
+  delay(100);
   // Must be called after WiFi is connected
   client.setServer(MQTT_HOST, MQTT_PORT);
 
   mqttTlsSetup();
 
-  // Keepalive / socket timeout can help stability
   client.setKeepAlive(30);
   client.setSocketTimeout(5);
+  client.setBufferSize(8192);
 
   Serial.print("Connecting to MQTT");
 
   while (!client.connected()) {
-    statusScreen(2); // MQTT screen
+    statusScreen(2);
 
-    // Unique-ish client id
     String clientId = "esp32-";
     clientId += String((uint32_t)ESP.getEfuseMac(), HEX);
 
-    // Connect (username/password)
     bool ok = client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
 
     if (ok) {
       Serial.println("\nConnected to MQTT!");
       statusScreen(0);
+
+      decodeMqttRegister();  // subscribe + callback
+
+      // ---- Publish "connected" status ----
+      if (client.connected()) {
+        String payload = "{\"status\":\"connected\",\"client\":\"";
+        payload += clientId;
+        payload += "\"}";
+
+        bool pubOk = client.publish(MQTT_STATUS_TOPIC, payload.c_str(), true); // retained
+
+        if (pubOk) {
+          Serial.println("Status published (connected)");
+        } else {
+          Serial.println("Failed to publish status");
+        }
+      }
+
       break;
     }
 
@@ -81,18 +104,10 @@ void mqttInit() {
 void mqttReconnectCheck() {
   const unsigned long now = millis();
 
-  // If WiFi is down, MQTT will fail anyway
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (client.connected()) return;
+  if (now - mqttPrevMillis < MQTT_RETRY_INTERVAL_MS) return;
 
-  if (client.connected()) {
-    return;
-  }
-
-  if (now - mqttPrevMillis < MQTT_RETRY_INTERVAL_MS) {
-    return;
-  }
   mqttPrevMillis = now;
 
   Serial.println("Reconnecting to MQTT...");
@@ -100,14 +115,23 @@ void mqttReconnectCheck() {
 
   String clientId = "esp32-";
   clientId += String((uint32_t)ESP.getEfuseMac(), HEX);
-
+  espClient.stop();
   bool ok = client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
 
   if (ok) {
     Serial.println("MQTT reconnected!");
     statusScreen(0);
-    // Re-subscribe here if you have subscriptions:
-    // client.subscribe("matrix/frame");
+
+    decodeMqttRegister();  // re-subscribe
+
+    // ---- Publish reconnect status ----
+    if (client.connected()) {
+      String payload = "{\"status\":\"reconnected\",\"client\":\"";
+      payload += clientId;
+      payload += "\"}";
+
+      client.publish(MQTT_STATUS_TOPIC, payload.c_str(), true);
+    }
   }
 }
 

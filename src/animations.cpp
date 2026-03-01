@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <display.h>
 #include <FastLED.h>
+#include <time.h>
 
 uint16_t time_counter = 0, cycles = 0, fps = 0;
 unsigned long fps_timer;
@@ -20,6 +21,88 @@ void renderScreen() {
   virtualDisp->drawPixel(127, 0, virtualDisp->color565(0, 0, 255)); // blue background
   virtualDisp->drawPixel(0, 127, virtualDisp->color565(0, 0, 255)); // blue background
   virtualDisp->drawPixel(127, 127, virtualDisp->color565(0, 0, 255)); // blue background
+  virtualDisp->flipDMABuffer();
+}
+
+void initTime() {
+  configTzTime(
+      "CET-1CEST,M3.5.0/02,M10.5.0/03",
+      "pool.ntp.org"
+  );
+
+  Serial.println("Waiting for NTP time sync...");
+
+  struct tm timeinfo;
+  while (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    delay(1000);
+  }
+
+  Serial.println("Time synced!");
+}
+
+void clockScreen() {
+  static int lastMin = -1;
+  static int lastMday = -1;
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    // alleen bij statusverandering zou je dit moeten tekenen, maar ok:
+    virtualDisp->clearScreen();
+    virtualDisp->setTextColor(virtualDisp->color565(255,255,255));
+    virtualDisp->setTextSize(2);
+    virtualDisp->setCursor(0, 0);
+    virtualDisp->print("No time");
+    virtualDisp->flipDMABuffer();
+    return;
+  }
+
+  // Alleen redraw als er echt iets verandert
+  if (timeinfo.tm_min == lastMin && timeinfo.tm_mday == lastMday) {
+    return; // niks doen -> geen tearing
+  }
+  lastMin  = timeinfo.tm_min;
+  lastMday = timeinfo.tm_mday;
+
+  char timeStr[6];   // HH:MM
+  char dateStr[11];  // DD-MM-YYYY
+  strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
+  strftime(dateStr, sizeof(dateStr), "%d-%m-%Y", &timeinfo);
+
+  int w = virtualDisp->width();
+  int h = virtualDisp->height();
+
+  uint16_t white = virtualDisp->color565(255,255,255);
+  uint16_t black = virtualDisp->color565(0,0,0);
+
+  virtualDisp->clearScreen();
+
+  // --- Datum bovenaan (size 1) ---
+  virtualDisp->setTextSize(1);
+  int dateWidth = (int)strlen(dateStr) * 6;
+  int dateX = (w - dateWidth) / 2;
+  int dateY = 2;
+
+  // Wis alleen de datum-regio (hoogte 8px bij size 1)
+  virtualDisp->fillRect(0, dateY, w, 8, black);
+  virtualDisp->setTextColor(white);
+  virtualDisp->setCursor(dateX, dateY);
+  virtualDisp->print(dateStr);
+
+  // --- Tijd gecentreerd (size 3) ---
+  virtualDisp->setTextSize(3);
+  int ts = 3;
+  int timeWidth  = (int)strlen(timeStr) * 6 * ts;
+  int timeHeight = 8 * ts;
+
+  int timeX = (w - timeWidth) / 2;
+  int timeY = (h - timeHeight) / 2;
+
+  // Wis alleen tijd-regio
+  virtualDisp->fillRect(0, timeY, w, timeHeight, black);
+  virtualDisp->setCursor(timeX, timeY);
+  virtualDisp->print(timeStr);
+
   virtualDisp->flipDMABuffer();
 }
 

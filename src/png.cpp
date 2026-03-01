@@ -85,3 +85,43 @@ bool drawPNG(const char* path, int x, int y) {
   f.close();
   return true;
 }
+
+// NEW: Draw PNG from a RAM buffer (e.g. received over MQTT)
+bool drawPNGFromBuffer(const uint8_t* data, size_t len, int x, int y) {
+  if (!data || len == 0) {
+    Serial.println("drawPNGFromBuffer: empty buffer");
+    return false;
+  }
+
+  png_offset_x = x;
+  png_offset_y = y;
+
+  pngle_t* png = pngle_new();
+  if (!png) {
+    Serial.println("drawPNGFromBuffer: pngle_new failed");
+    return false;
+  }
+
+  pngle_set_draw_callback(png, png_draw_cb);
+
+  // Feed the pngle decoder in small blocks (like your file code does)
+  const size_t FEED_CHUNK = 256;
+  size_t off = 0;
+
+  while (off < len) {
+    size_t n = (len - off > FEED_CHUNK) ? FEED_CHUNK : (len - off);
+    int rc = pngle_feed(png, data + off, (int)n);
+
+    // pngle_feed returns <0 on error (depending on pngle version)
+    if (rc < 0) {
+      Serial.println("drawPNGFromBuffer: pngle_feed error");
+      pngle_destroy(png);
+      return false;
+    }
+
+    off += n;
+  }
+
+  pngle_destroy(png);
+  return true;
+}

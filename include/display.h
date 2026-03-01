@@ -37,6 +37,10 @@ void renderScreen();
 void funSettings();
 
 void statusScreen(int status = 0);
+
+void initTime();
+void clockScreen(); 
+
 void drawPenis();
 void drawColors();
 

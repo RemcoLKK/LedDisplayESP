@@ -22,7 +22,7 @@ void displayInit(){
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
-  dma_display->setBrightness8(128); //0-255
+  dma_display->setBrightness8(255); //0-255
   dma_display->clearScreen();
 
   virtualDisp = new VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>(VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y);
